@@ -23,8 +23,8 @@ impl Acceptor {
 
     pub fn handle_prepare(&mut self, proposal_number: u64, value: String, tx: &Sender<Message>) {
         if proposal_number < self.max_id {
-            print_green(&format!("[Acceptor] PREPARE SEND FAIL: {:?}", Message::Fail));
-            tx.send(Message::Fail).unwrap();
+            print_green(&format!("[Acceptor] PREPARE SEND FAIL: {:?}", Message::Fail(value.clone())));
+            tx.send(Message::Fail(value.clone())).unwrap();
         } else {
             self.max_id = proposal_number;
             if self.proposal_accepted {
@@ -49,10 +49,14 @@ impl Acceptor {
         if proposal_number == self.max_id {
             let message = Message::Accept(proposal_number, value);
             print_green(&format!("[Acceptor] SEND ACCEPT: {:?}", message));
+            self.proposal_accepted = false;
+            self.accepted_value = None;
+            self.accepted_proposal_number = None;
             tx.send(message).unwrap();
         } else {
-            print_green(&format!("[Acceptor] PROPOSE SEND FAIL: {:?}", Message::Fail));
-            tx.send(Message::Fail).unwrap();
+            print_green(&format!("Proposal number: {:?}, Max id: {:?}", proposal_number, self.max_id));
+            print_green(&format!("[Acceptor] PROPOSE SEND FAIL: {:?}", Message::Fail(value.clone())));
+            tx.send(Message::Fail(value.clone())).unwrap();
         }
     }
 }
