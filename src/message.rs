@@ -6,4 +6,5 @@ pub enum Message {
     Propose(u64, String),
     Accept(u64, String),
     Fail,
+    Terminate,
 }

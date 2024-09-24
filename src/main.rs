@@ -17,12 +17,12 @@ use formatting::{print_green, print_red};
 
 const NUM_PROPOSERS: usize = 1;
 const NUM_ACCEPTORS: usize = 3;
-const NUM_LEARNERS: usize = 2;
+const NUM_LEARNERS: usize = 1;
 
 fn main() {
   
     let client = Client::new(0);
-
+    let mut storage = Arc::new(Mutex::new(vec![]));
     // Nodes
     let mut proposers    = vec![];
     let mut acceptors = vec![];
@@ -39,7 +39,7 @@ fn main() {
     setup_acceptors(&mut acceptors, acceptor_rxs.clone(), acceptor_txs.clone(), proposer_txs.clone());
     
     // LEARNERS
-    setup_learners(&mut learners, learner_rxs.clone());
+    setup_learners(&mut learners, learner_rxs.clone(), storage.clone());
 
     client.consensus("values".to_string(), proposer_txs[0].clone());
     client.consensus("wabbit".to_string(), proposer_txs[0].clone());
@@ -70,16 +70,21 @@ fn setup_channels(nodes: usize) -> (Arc<Mutex<Vec<Sender<Message>>>>, Arc<Mutex<
 }
 
 
-fn setup_learners(learners: &mut Vec<thread::JoinHandle<()>>, learner_rxs: Arc<Mutex<Vec<Receiver<Message>>>>) {
+fn setup_learners(learners: &mut Vec<thread::JoinHandle<()>>, learner_rxs: Arc<Mutex<Vec<Receiver<Message>>>>, storage: Arc<Mutex<Vec<String>>>) {
     for i in 0..NUM_LEARNERS {
         let learner_rx_binding = learner_rxs.lock().unwrap()[i].clone();
+        let mut storage_binding = storage.clone();
         let handle = thread::spawn(move || {
             let learner = Learner::new(i as u64, &learner_rx_binding);
             loop {
                 let message = learner_rx_binding.recv().unwrap();
                 match message {
                     Message::Accept(proposal_number, value) => {
-                        learner.record(proposal_number, value);
+                        learner.record(proposal_number, value, &mut storage_binding);
+                    }
+                    Message::Terminate => {
+                        println!("[Learner] Received TERMINATE");
+                        break;
                     }
                     _ => {
                         print_red(&format!("[Learner] Received message: {:?}", message));
@@ -161,12 +166,16 @@ learner_txs: Arc<Mutex<Vec<Sender<Message>>>>) {
                     Message::Fail => {
                         println!("[Proposer] Received FAIL");
                     }
+                    Message::Terminate => {
+                        println!("[Proposer] Received TERMINATE");
+                        break;
+                    }
                     _ => {
                         println!("[Proposer] Received message: {:?}", message);
                         panic!("[Proposer] Received message: {:?}", message);
                     }
                 }
-                thread::sleep(Duration::from_secs(1));
+                // thread::sleep(Duration::from_secs(1));
             }
         });
         proposers.push(handle);
@@ -193,17 +202,76 @@ proposer_txs: Vec<Sender<Message>>) {
                     Message::Propose(proposal_number, value) => {
                         acceptor.handle_propose(proposal_number, value, &proposer_tx_binding);
                     }
+                    Message::Fail => {
+                        println!("[Acceptor] Received FAIL");
+                    }
+                    Message::Terminate => {
+                        println!("[Acceptor] Received TERMINATE");
+                        break;
+                    }
                     _ => {
                         println!("\x1b[31m[Acceptor] Received message: {:?}\x1b[0m", message);
                         panic!("\x1b[31m[Acceptor] Received message: {:?}\x1b[0m", message);
                     }
-                    Message::Fail => {
-                        println!("[Acceptor] Received FAIL");
-                    }
                 }
-                thread::sleep(Duration::from_secs(1));
+                // thread::sleep(Duration::from_secs(1));
             }
         });
         acceptors.push(handle);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossbeam_channel::unbounded;
+    use std::sync::{Arc, Mutex};
+
+
+    #[test]
+    fn test_propose_single_value() {
+        let client = Client::new(0);
+
+        // Nodes
+        let mut proposers    = vec![];
+        let mut acceptors = vec![];
+        let mut learners = vec![];
+        let mut storage = Arc::new(Mutex::new(vec![]));
+        // Channels
+        let mut proposer_txs = vec![]; // Store multiple tx channels
+        let (learner_txs, learner_rxs) = setup_channels(NUM_LEARNERS);
+        let (acceptor_txs, acceptor_rxs) = setup_channels(NUM_ACCEPTORS);
+        // PROPOSERS
+        setup_proposers(&mut proposers, &mut proposer_txs, acceptor_txs.clone(), learner_txs.clone());
+
+        // ACCEPTORS
+        setup_acceptors(&mut acceptors, acceptor_rxs.clone(), acceptor_txs.clone(), proposer_txs.clone());
+        
+        // LEARNERS
+        setup_learners(&mut learners, learner_rxs.clone(), storage.clone());
+
+        client.consensus("values".to_string(), proposer_txs[0].clone());
+        thread::sleep(Duration::from_secs(2));
+        for proposer in proposer_txs.iter() {
+            proposer.send(Message::Terminate).unwrap();
+        }
+        for acceptor in acceptor_txs.lock().unwrap().iter() {
+            acceptor.send(Message::Terminate).unwrap();
+        }
+        for learner in learner_txs.lock().unwrap().iter() {
+            learner.send(Message::Terminate).unwrap();
+        }
+
+        for proposer in proposers {
+            proposer.join().unwrap();
+        }
+        for acceptor in acceptors {
+            acceptor.join().unwrap();
+        }
+        for learner in learners {
+            learner.join().unwrap();
+        }
+        println!("storage: {:?}", storage.lock().unwrap());
+        assert_eq!(storage.lock().unwrap().len(), 1);
     }
 }
