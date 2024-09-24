@@ -19,44 +19,6 @@ const NUM_PROPOSERS: usize = 1;
 const NUM_ACCEPTORS: usize = 3;
 const NUM_LEARNERS: usize = 1;
 
-fn main() {
-  
-    let client = Client::new(0);
-    let mut storage = Arc::new(Mutex::new(vec![]));
-    // Nodes
-    let mut proposers    = vec![];
-    let mut acceptors = vec![];
-    let mut learners = vec![];
-    
-    // Channels
-    let mut proposer_txs = vec![]; // Store multiple tx channels
-    let (learner_txs, learner_rxs) = setup_channels(NUM_LEARNERS);
-    let (acceptor_txs, acceptor_rxs) = setup_channels(NUM_ACCEPTORS);
-    // PROPOSERS
-    setup_proposers(&mut proposers, &mut proposer_txs, acceptor_txs.clone(), learner_txs);
-
-    // ACCEPTORS
-    setup_acceptors(&mut acceptors, acceptor_rxs.clone(), acceptor_txs.clone(), proposer_txs.clone());
-    
-    // LEARNERS
-    setup_learners(&mut learners, learner_rxs.clone(), storage.clone());
-
-    client.consensus("values".to_string(), proposer_txs[0].clone());
-    client.consensus("wabbit".to_string(), proposer_txs[0].clone());
-    client.consensus("wabb2it".to_string(), proposer_txs[0].clone());
-    // client.consensus("values3".to_string(), proposer_txs[0].clone());
-
-    for proposer in proposers {
-        proposer.join().unwrap();
-    }
-    for acceptor in acceptors {
-        acceptor.join().unwrap();
-    }
-    for learner in learners {
-        learner.join().unwrap();
-    }
-}
-
 fn setup_channels(nodes: usize) -> (Arc<Mutex<Vec<Sender<Message>>>>, Arc<Mutex<Vec<Receiver<Message>>>>) {
 
     let mut proposer_txs = vec![];
@@ -218,6 +180,45 @@ proposer_txs: Vec<Sender<Message>>) {
             }
         });
         acceptors.push(handle);
+    }
+}
+
+
+fn main() {
+  
+    let client = Client::new(0);
+    let mut storage = Arc::new(Mutex::new(vec![]));
+    // Nodes
+    let mut proposers    = vec![];
+    let mut acceptors = vec![];
+    let mut learners = vec![];
+    
+    // Channels
+    let mut proposer_txs = vec![]; // Store multiple tx channels
+    let (learner_txs, learner_rxs) = setup_channels(NUM_LEARNERS);
+    let (acceptor_txs, acceptor_rxs) = setup_channels(NUM_ACCEPTORS);
+    // PROPOSERS
+    setup_proposers(&mut proposers, &mut proposer_txs, acceptor_txs.clone(), learner_txs);
+
+    // ACCEPTORS
+    setup_acceptors(&mut acceptors, acceptor_rxs.clone(), acceptor_txs.clone(), proposer_txs.clone());
+    
+    // LEARNERS
+    setup_learners(&mut learners, learner_rxs.clone(), storage.clone());
+
+    client.consensus("values".to_string(), proposer_txs[0].clone());
+    client.consensus("wabbit".to_string(), proposer_txs[0].clone());
+    client.consensus("wabb2it".to_string(), proposer_txs[0].clone());
+    // client.consensus("values3".to_string(), proposer_txs[0].clone());
+
+    for proposer in proposers {
+        proposer.join().unwrap();
+    }
+    for acceptor in acceptors {
+        acceptor.join().unwrap();
+    }
+    for learner in learners {
+        learner.join().unwrap();
     }
 }
 
