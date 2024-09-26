@@ -11,9 +11,9 @@ impl Client {
         Client { id }
     }
 
-    pub fn consensus(&self, value: String, tx: Sender<Message>) {
-        let message = Message::Consensus(self.id, value);
+    pub fn consensus(&self, id: Option<u64>, value: String, tx: Sender<Message>) {
+        let message = Message::Consensus(id.unwrap_or(self.id), value);
         print_green(&format!("[Client] CONSENSUS: {:?}", message));
-        tx.send(message).unwrap();
+        tx.send(message.clone()).unwrap_or(println!("Failed to send message {:?}", message.clone()));
     }
 }

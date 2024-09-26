@@ -13,6 +13,10 @@ impl<'a> Learner<'a> {
 
     pub fn record(&self, proposal_number: u64, value: String, storage: &mut Arc<Mutex<Vec<String>>>) {
         print_red(&format!("[Learner] Recording value: {:?} with proposal number: {:?}", value, proposal_number));
-        storage.lock().unwrap().push(value);
+        let mut storage_guard = storage.lock().unwrap();
+        if !storage_guard.contains(&value) {
+            storage_guard.push(value);
+        }
+        // storage.lock().unwrap().push(value);
     }
 }

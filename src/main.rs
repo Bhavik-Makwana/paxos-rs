@@ -39,6 +39,7 @@ fn setup_learners(learners: &mut Vec<thread::JoinHandle<()>>, learner_rxs: Arc<M
         let handle = thread::spawn(move || {
             let learner = Learner::new(i as u64, &learner_rx_binding);
             loop {
+                println!("[Learner] Waiting for message");
                 let message = learner_rx_binding.recv().unwrap();
                 match message {
                     Message::Accept(proposal_number, value) => {
@@ -72,39 +73,51 @@ learner_txs: Arc<Mutex<Vec<Sender<Message>>>>) {
             // proposer.run();
             let mut proposals = vec![];
             let mut accepted = 0;
+            let mut accepteds = vec![];
             loop {
                 let message = rx.recv().unwrap();
                 match message {
-                    Message::Consensus(_, value) => {
+                    Message::Consensus(id, value) => {
                         // println!("Received consensus message: {:?}", value);
-                        proposer.handle_consensus(&acceptor_txs_binding, value);
+                        proposer.handle_consensus(&acceptor_txs_binding, Some(id), value);
                     }
                     Message::Promise(proposal_number, accepted_proposal_number, value) => {
                         // println!("PROMISE: {:?}", proposal_number);
-                        proposals.push((proposal_number, accepted_proposal_number, value));
+                        proposals.push((proposal_number, accepted_proposal_number, value.clone()));
                         // println!("proposals: {:?}", proposals);
                         if proposals.len() >= (NUM_ACCEPTORS / 2) + 1 {
                             println!("[Proposer] Achieved quorum");
-                            let all_same = proposals.iter().all(|&(_, ref accepted_proposal_number, ref v)| v == &proposals[0].2 && accepted_proposal_number == &proposals[0].1);
-                            if all_same {
-                                println!("[Proposer] All proposals are the same {:?}", proposals);
-                                let value = proposals[0].2.clone();
-                                if let Some(accepted_proposal_number) = proposals[0].1 {
-                                    proposer.propose(accepted_proposal_number, value, &acceptor_txs_binding);
-                                } else {
-                                    proposer.propose(proposals[0].0, value, &acceptor_txs_binding);
-                                }
-                                proposals.clear();
-                            } else {
-                                println!("[Proposer] Proposals are not the same {:?}", proposals);
-                                let value = proposals
+                            // let all_same = proposals.iter().all(|&(_, ref accepted_proposal_number, ref v)| v == &proposals[0].2 && accepted_proposal_number == &proposals[0].1);
+                            let contains_accepted_value = proposals.iter().any(|&(_, ref accepted_proposal_number, _)| accepted_proposal_number.is_some());
+                            if contains_accepted_value {
+                                println!("[Proposer] Contains accepted value {:?}", proposals);
+                                let value2 = proposals
                                 .iter()
-                                .max_by_key(|proposal| proposal.0)
+                                .max_by_key(|proposal| proposal.1.unwrap_or(0))
                                 .unwrap()
                                 .clone();
-                                println!("[Proposer] Proposing value: {:?}", value);
-                                let proposal_number = u64::max(value.1.unwrap(), value.0);
-                                proposer.propose(proposal_number, value.2, &acceptor_txs_binding);
+                                // if let Some(accepted_proposal_number) = proposals[0].1 {
+                                //     proposer.propose(accepted_proposal_number, value, &acceptor_txs_binding);
+                                // } else {
+                                //     proposer.propose(proposals[0].0, value, &acceptor_txs_binding);
+                                // }
+                                proposer.propose(proposal_number, value2.2, &acceptor_txs_binding);
+                                proposals.clear();
+                            } else {
+                                println!("[Proposer] Do not contain accepted value {:?}", proposals);
+                                // let value = proposals
+                                // .iter()
+                                // .filter(|proposal| proposal.0 == proposal_number)
+                                // .collect::<Vec<_>>()
+                                // .first()
+                                // .unwrap()
+                                // .clone();
+                                // .max_by_key(|proposal| proposal.0)
+                                // .unwrap()
+                                // .clone();
+                                // println!("[Proposer] Proposing value: {:?}", value);
+                                // let proposal_number = u64::max(value.1.unwrap_or(0), value.0);
+                                proposer.propose(proposal_number, value.clone(), &acceptor_txs_binding);
                                 proposals.clear();
                             }
                             
@@ -117,19 +130,32 @@ learner_txs: Arc<Mutex<Vec<Sender<Message>>>>) {
                     Message::Accept(proposal_number, value) => {
                         println!("[Proposer] Received ACCEPT: {:?}", value);
                         accepted += 1;
-                        if accepted >= (NUM_ACCEPTORS / 2) + 1 {
+                        accepteds.push(value.clone());
+                        // Count occurrences of each value in accepteds
+                        let mut value_counts = std::collections::HashMap::new();
+                        for value in &accepteds {
+                            *value_counts.entry(value.clone()).or_insert(0) += 1;
+                        }
+                        
+                        // Find the maximum count and its corresponding value
+                        let (max_value, max_count) = value_counts.iter()
+                            .max_by_key(|&(_, count)| count)
+                            .map(|(value, count)| (value.clone(), *count))
+                            .unwrap_or((String::new(), 0));
+                        if max_count >= (NUM_ACCEPTORS / 2) + 1 {
                             println!("[Proposer] ACCEPT QUORUM REACHED");
-                            accepted = 0;
+                            println!("[Proposer] Sent ACCEPT to learner: {:?} accepted: {:?}", max_value, accepteds);
+                            accepteds.clear();
                             for learner_tx in learner_txs_binding.lock().unwrap().iter() {
                                 learner_tx
-                                    .send(Message::Accept(proposal_number, value.clone()))
+                                    .send(Message::Accept(proposal_number, max_value.clone()))
                                     .unwrap();
                             }
                             proposals.clear();
                         }
                     }
                     Message::Fail(value) => {
-                        println!("[Proposer] Received FAIL");
+                        println!("[Proposer] Received FAIL {:?}", value);
                         // tx.send(Message::Consensus(0, value)).unwrap();
                     }
                     Message::Terminate => {
@@ -160,7 +186,7 @@ proposer_txs: Vec<Sender<Message>>) {
         let handle = thread::spawn(move || {
             let mut acceptor = Acceptor::new(i as u64, 0);
             loop {
-                let message = rx_binding.recv().unwrap_or(Message::Terminate);
+                let message = rx_binding.recv().unwrap();
                 match message {
                     Message::Prepare(proposal_number, value) => {
                         acceptor.handle_prepare(proposal_number, value, &proposer_tx_binding);
@@ -210,24 +236,24 @@ fn main() {
     // LEARNERS
     setup_learners(&mut learners, learner_rxs.clone(), storage.clone());
 
-    client.consensus("values".to_string(), proposer_txs[0].clone());
-    thread::sleep(Duration::from_millis(50));
-    client.consensus("wabbit".to_string(), proposer_txs[0].clone());
-    client.consensus("wabb2it".to_string(), proposer_txs[0].clone());
-    client.consensus("wabitual".to_string(), proposer_txs[0].clone());
-    thread::sleep(Duration::from_millis(50));
-    client.consensus("wabit".to_string(), proposer_txs[0].clone());
+    client.consensus(None, "values".to_string(), proposer_txs[0].clone());
+    thread::sleep(Duration::from_secs(1));
+    client.consensus(None, "wabbit".to_string(), proposer_txs[0].clone());
+    client.consensus(None, "wabb2it".to_string(), proposer_txs[0].clone());
+    client.consensus(None, "wabitual".to_string(), proposer_txs[0].clone());
+    client.consensus(Some(10), "wabitual".to_string(), proposer_txs[0].clone());
+    // thread::sleep(Duration::from_millis(500));
+    // thread::sleep(Duration::from_secs(2));
+    // client.consensus("wabit".to_string(), proposer_txs[0].clone());
     // client.consensus("values3".to_string(), proposer_txs[0].clone());
-    thread::sleep(Duration::from_millis(100));
-    for proposer in proposer_txs.iter() {
-        proposer.send(Message::Terminate).unwrap();
-    }
-    for acceptor in acceptor_txs.lock().unwrap().iter() {
-        acceptor.send(Message::Terminate).unwrap();
-    }
-    for learner in learner_txs.lock().unwrap().iter() {
-        learner.send(Message::Terminate).unwrap();
-    }
+    thread::sleep(Duration::from_secs(3));
+    
+    terminate_threads(proposer_txs, acceptor_txs, learner_txs);
+    join_threads(proposers, acceptors, learners);
+    println!("storage: {:?}", storage.lock().unwrap());
+}
+
+fn join_threads(proposers: Vec<thread::JoinHandle<()>>, acceptors: Vec<thread::JoinHandle<()>>, learners: Vec<thread::JoinHandle<()>>) {
     for proposer in proposers {
         proposer.join().unwrap();
     }
@@ -237,7 +263,17 @@ fn main() {
     for learner in learners {
         learner.join().unwrap();
     }
-    println!("storage: {:?}", storage.lock().unwrap());
+}
+fn terminate_threads(proposer_txs: Vec<Sender<Message>>, acceptor_txs: Arc<Mutex<Vec<Sender<Message>>>>, learner_txs: Arc<Mutex<Vec<Sender<Message>>>>) {
+    for proposer in proposer_txs.iter() {
+        proposer.send(Message::Terminate).unwrap_or(println!("Failed to send TERMINATE message to proposer"));
+    }
+    for acceptor in acceptor_txs.lock().unwrap().iter() {
+        acceptor.send(Message::Terminate).unwrap_or(println!("Failed to send TERMINATE message to acceptor"));
+    }
+    for learner in learner_txs.lock().unwrap().iter() {
+        learner.send(Message::Terminate).unwrap_or(println!("Failed to send TERMINATE message to learner"));
+    }
 }
 
 #[cfg(test)]

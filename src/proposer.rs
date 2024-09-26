@@ -32,14 +32,14 @@ impl<'a> Proposer<'a> {
         }
     }
 
-    pub fn handle_consensus(&mut self, tx: &'a Arc<Mutex<Vec<Sender<Message>>>>, value: String) {
-        let proposal_number = self.proposal_number + 1;
+    pub fn handle_consensus(&mut self, tx: &'a Arc<Mutex<Vec<Sender<Message>>>>, id: Option<u64>, value: String) {
+        let proposal_number = self.proposal_number + 1 + id.unwrap_or(0);
         let message = Message::Prepare(proposal_number, value);
         for acceptor in tx.lock().unwrap().iter() {
             println!("[Proposer] Sending message: {:?}", message);
             acceptor.send(message.clone()).unwrap();
         }
-        self.proposal_number += 1;
+        self.proposal_number += 1 + id.unwrap_or(0);
     }
 
     pub fn propose(
