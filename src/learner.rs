@@ -10,11 +10,11 @@ impl Learner {
         Learner { id }
     }
 
-    pub fn record(&self, proposal_number: u64, value: String, storage: &mut Arc<Mutex<Vec<String>>>) {
-        print_red(&format!("[Learner] Recording value: {:?} with proposal number: {:?}", value, proposal_number));
-        let mut storage_guard = storage.lock().unwrap();
-        if !storage_guard.contains(&value) {
-            storage_guard.push(value);
+    pub fn record(&self, proposal_number: u64, round_number: u64, value: String, storage: &mut Arc<Mutex<Vec<(u64, String)>>>) {
+        print_red(&format!("[Learner] Recording value: {:?} with proposal number: {:?} and round number: {:?}", value, proposal_number, round_number));
+        let mut storage_guard: std::sync::MutexGuard<'_, Vec<(u64, String)>> = storage.lock().unwrap();
+        if !storage_guard.contains(&(round_number, value.clone())) {
+            storage_guard.push((round_number, value.clone()));
         }
     }
 }
