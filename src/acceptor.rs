@@ -40,7 +40,6 @@ impl Acceptor {
     }
 
     pub fn handle_propose(&mut self, proposal_number: u64, value: String, tx: &Sender<Message>) {
-        println!("acceptss Proposal number: {:?}, Max id: {:?}", proposal_number, self.max_id);
         if proposal_number >= self.max_id {
             self.max_id = proposal_number;
             self.proposal_accepted = true;
@@ -50,17 +49,5 @@ impl Acceptor {
         } else {
             tx.send(Message::Fail(value.clone())).unwrap();
         }
-        // if proposal_number == self.max_id {
-        //     let message = Message::Accept(proposal_number, value);
-        //     print_green(&format!("[Acceptor] SEND ACCEPT: {:?}", message));
-        //     self.proposal_accepted = false;
-        //     self.accepted_value = None;
-        //     self.accepted_proposal_number = None;
-        //     tx.send(message).unwrap();
-        // } else {
-        //     print_green(&format!("Proposal number: {:?}, Max id: {:?}", proposal_number, self.max_id));
-        //     print_green(&format!("[Acceptor] PROPOSE SEND FAIL: {:?}", Message::Fail(value.clone())));
-        //     tx.send(Message::Fail(value.clone())).unwrap();
-        // }
     }
 }
