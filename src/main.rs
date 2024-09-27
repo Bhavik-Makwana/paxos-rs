@@ -32,9 +32,10 @@ fn setup_channels(nodes: usize) -> (Arc<Mutex<Vec<Sender<Message>>>>, Arc<Mutex<
 }
 
 
-fn setup_learners(learners: &mut Vec<thread::JoinHandle<()>>, learner_rxs: Arc<Mutex<Vec<Receiver<Message>>>>, storage: &mut Arc<Mutex<Vec<(u64, String)>>>) {
+fn setup_learners(learners: &mut Vec<thread::JoinHandle<()>>, learner_rxs: Arc<Mutex<Vec<Receiver<Message>>>>, proposer_txs: Vec<Sender<Message>>, storage: &mut Arc<Mutex<Vec<(u64, String)>>>) {
     for i in 0..NUM_LEARNERS {
         let learner_rx_binding = learner_rxs.lock().unwrap()[i].clone();
+        let proposer_txs_binding = proposer_txs.clone();
         let mut storage_binding = storage.clone();
         let handle = thread::spawn(move || {
             let learner = Learner::new(i as u64);
@@ -43,7 +44,7 @@ fn setup_learners(learners: &mut Vec<thread::JoinHandle<()>>, learner_rxs: Arc<M
                 let message = learner_rx_binding.recv().unwrap();
                 match message {
                     Message::Accept(proposal_number, round_number, value) => {
-                        learner.record(proposal_number, round_number, value.clone(), &mut storage_binding);
+                        learner.record(proposal_number, round_number, value.clone(), &mut storage_binding, &proposer_txs_binding);
                     }
                     Message::Terminate => {
                         println!("[Learner] Received TERMINATE");
@@ -124,6 +125,10 @@ learner_txs: Arc<Mutex<Vec<Sender<Message>>>>) {
                             proposals.clear();
                         }
                     }
+                    Message::RoundNumber(round_number) => {
+                        println!("[Proposer] Received ROUND NUMBER: {:?}", round_number);
+                        proposer.update_round_number(round_number);
+                    }
                     Message::Fail(value) => {
                         println!("[Proposer] Received FAIL {:?}", value);
                     }
@@ -201,7 +206,7 @@ fn main() {
     setup_acceptors(&mut acceptors, acceptor_rxs.clone(), acceptor_txs.clone(), proposer_txs.clone());
     
     // LEARNERS
-    setup_learners(&mut learners, learner_rxs.clone(), &mut storage);
+    setup_learners(&mut learners, learner_rxs.clone(), proposer_txs.clone(), &mut storage);
 
     client.consensus(None, "values".to_string(), proposer_txs[0].clone());
     thread::sleep(Duration::from_secs(1));
@@ -211,6 +216,7 @@ fn main() {
     client.consensus(Some(10), "wabitual".to_string(), proposer_txs[0].clone());
     thread::sleep(Duration::from_secs(1));
     client.consensus(Some(10), "wabbit".to_string(), proposer_txs[0].clone());
+    client.consensus(Some(10), "∑avingwabbit".to_string(), proposer_txs[0].clone());
     thread::sleep(Duration::from_secs(3));
     
     terminate_threads(proposer_txs, acceptor_txs, learner_txs);

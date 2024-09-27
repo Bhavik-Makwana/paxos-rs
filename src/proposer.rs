@@ -20,7 +20,7 @@ impl Proposer {
     }
 
     pub fn handle_consensus(&mut self, tx: &Arc<Mutex<Vec<Sender<Message>>>>, id: Option<u64>, value: String) {
-        self.round_number += 1;
+        // self.round_number += 1;
         let proposal_number = self.proposal_number + 1 + id.unwrap_or(0);
         let message = Message::Prepare(proposal_number, self.round_number, value);
         for acceptor in tx.lock().unwrap().iter() {
@@ -28,6 +28,10 @@ impl Proposer {
             acceptor.send(message.clone()).unwrap();
         }
         self.proposal_number += 1 + id.unwrap_or(0);
+    }
+
+    pub fn update_round_number(&mut self, round_number: u64) {
+        self.round_number = round_number;
     }
 
     pub fn propose(
