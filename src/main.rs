@@ -127,7 +127,7 @@ learner_txs: Arc<Mutex<Vec<Sender<Message>>>>) {
                     }
                     Message::RoundNumber(round_number) => {
                         println!("[Proposer] Received ROUND NUMBER: {:?}", round_number);
-                        proposer.update_round_number(round_number);
+                        proposer.update_round_number(round_number, &acceptor_txs_binding);
                     }
                     Message::Fail(value) => {
                         println!("[Proposer] Received FAIL {:?}", value);
@@ -166,6 +166,10 @@ proposer_txs: Vec<Sender<Message>>) {
                     }
                     Message::Propose(proposal_number, round_number, value) => {
                         acceptor.handle_propose(proposal_number, round_number, value, &proposer_tx_binding);
+                    }
+                    Message::Reset => {
+                        println!("[Acceptor] Received RESET");
+                        acceptor.reset();
                     }
                     Message::Fail(value) => {
                         println!("[Acceptor] Received FAIL");
@@ -215,7 +219,7 @@ fn main() {
     client.consensus(None, "wabitual".to_string(), proposer_txs[0].clone());
     client.consensus(Some(10), "wabitual".to_string(), proposer_txs[0].clone());
     thread::sleep(Duration::from_secs(1));
-    client.consensus(Some(10), "wabbit".to_string(), proposer_txs[0].clone());
+    // client.consensus(Some(10), "wabbit".to_string(), proposer_txs[0].clone());
     client.consensus(Some(10), "∑avingwabbit".to_string(), proposer_txs[0].clone());
     thread::sleep(Duration::from_secs(3));
     

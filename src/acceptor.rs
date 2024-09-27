@@ -40,19 +40,25 @@ impl Acceptor {
             }
         }
     }
-
+    
+    pub fn reset(&mut self) {
+        self.proposal_accepted = false;
+        self.accepted_value = None;
+        self.accepted_proposal_number = None;
+    }
+    
     pub fn handle_propose(&mut self, proposal_number: u64, round_number: u64, value: String, tx: &Sender<Message>) {
         if proposal_number >= self.max_id {
             self.max_id = proposal_number;
             self.proposal_accepted = true;
             self.accepted_value = Some(value.clone());
             self.accepted_proposal_number = Some(proposal_number);
-            if self.round_number < round_number {
-                self.accepted_proposal_number = None;
-                self.accepted_value = None;
-                self.proposal_accepted = false;
-                self.round_number = round_number;
-            }
+            // if self.round_number < round_number {
+            //     self.accepted_proposal_number = None;
+            //     self.accepted_value = None;
+            //     self.proposal_accepted = false;
+            //     self.round_number = round_number;
+            // }
             tx.send(Message::Accept(proposal_number, round_number, value.clone())).unwrap();
         } else {
             tx.send(Message::Fail(value.clone())).unwrap();

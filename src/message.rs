@@ -7,6 +7,7 @@ pub enum Message {
     Propose(u64, u64, String),
     Accept(u64, u64, String),
     RoundNumber(u64),
+    Reset,
     Fail(String),
     Terminate,
 }
@@ -20,6 +21,7 @@ impl fmt::Display for Message {
             Message::Propose(id, round_number, value) => format!("Propose({}, {}, {})", id, round_number, value),
             Message::Accept(id, round_number, value) => format!("Accept({}, {}, {})", id, round_number, value),
             Message::RoundNumber(round_number) => format!("RoundNumber({round_number})"),
+            Message::Reset => "Reset".to_string(),
             Message::Fail(value) => format!("Fail({value})"),
             Message::Terminate => "Terminate".to_string(),
         };

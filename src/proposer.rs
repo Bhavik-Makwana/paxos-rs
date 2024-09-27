@@ -30,8 +30,15 @@ impl Proposer {
         self.proposal_number += 1 + id.unwrap_or(0);
     }
 
-    pub fn update_round_number(&mut self, round_number: u64) {
+    pub fn update_round_number(&mut self, round_number: u64, tx: &Arc<Mutex<Vec<Sender<Message>>>>) {
         self.round_number = round_number;
+        self.reset_acceptors(tx);
+    }
+
+    pub fn reset_acceptors(&mut self, tx: &Arc<Mutex<Vec<Sender<Message>>>>) {
+        for acceptor in tx.lock().unwrap().iter() {
+            acceptor.send(Message::Reset).unwrap();
+        }
     }
 
     pub fn propose(
