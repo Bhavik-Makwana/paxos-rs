@@ -31,7 +31,7 @@ impl Proposer {
         &self,
         proposal_number: u64,
         value: String,
-        tx: &Arc<Mutex<Vec<Sender<Message>>>>,
+        tx: & Arc<Mutex<Vec<Sender<Message>>>>,
     ) {
         let message = Message::Propose(proposal_number, value);
         for acceptor in tx.lock().unwrap().iter() {

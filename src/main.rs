@@ -79,20 +79,21 @@ learner_txs: Arc<Mutex<Vec<Sender<Message>>>>) {
                         proposer.handle_consensus(&acceptor_txs_binding, Some(id), value);
                     }
                     Message::Promise(proposal_number, accepted_proposal_number, value) => {
-                        proposals.push((proposal_number, accepted_proposal_number, value.clone()));
+                        proposals.push((proposal_number, accepted_proposal_number, value));
                         if proposals.len() >= (NUM_ACCEPTORS / 2) + 1 {
                             println!("[Proposer] Achieved quorum");
                             let contains_accepted_value = proposals.iter().any(|&(_, ref accepted_proposal_number, _)| accepted_proposal_number.is_some());
+                            let propose_value;
                             if contains_accepted_value {
-                                let propose_value = proposals
+                                propose_value = proposals
                                 .iter()
                                 .max_by_key(|proposal| proposal.1.unwrap_or(0))
                                 .unwrap()
-                                .clone();
-                                proposer.propose(proposal_number, propose_value.2, &acceptor_txs_binding);
+                                .2.clone();
                             } else {
-                                proposer.propose(proposal_number, value, &acceptor_txs_binding);
+                                propose_value = proposals[0].2.clone();
                             }
+                            proposer.propose(proposal_number, propose_value, &acceptor_txs_binding);
                             proposals.clear();
                             
                         } 
