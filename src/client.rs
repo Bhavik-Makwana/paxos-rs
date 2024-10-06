@@ -1,14 +1,15 @@
 use crossbeam_channel::{bounded, Receiver, Sender};
 use crate::message::Message;
-use crate::formatting::print_green;
+use crate::formatting::{print_green, print_red};
 
 pub struct Client {
     id: u64,
+    leader_id: Option<u64>,
 }
 
 impl Client {
     pub fn new(id: u64) -> Self {
-        Client { id }
+        Client { id, leader_id: None }
     }
 
     pub fn consensus(&self, id: Option<u64>, value: String, tx: Sender<Message>) {
@@ -21,5 +22,18 @@ impl Client {
         let message = Message::StableConsensus(id.unwrap_or(0), value);
         print_green(&format!("[Client] CONSENSUS: {:?}", message));
         tx.send(message.clone()).unwrap_or(println!("Failed to send message {:?}", message.clone()));
+    }
+
+    pub fn await_stable_leader(&mut self, rx: Receiver<Message>) {
+        let message = rx.recv().unwrap();
+        match message {
+            Message::LeaderID(id) => {
+                print_green(&format!("[Client] LEADER ID: {:?}", id));
+                self.leader_id = Some(id);
+            }
+            _ => {
+                print_red(&format!("[Client] Received unexpected message: {:?}", message));
+            }
+        }
     }
 }

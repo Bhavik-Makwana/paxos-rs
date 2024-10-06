@@ -22,7 +22,7 @@ impl Proposer {
     pub fn handle_consensus(&mut self, tx: &Arc<Mutex<Vec<Sender<Message>>>>, id: Option<u64>, value: String) {
         // self.round_number += 1;
         self.proposal_number += 1 + id.unwrap_or(0);
-        let message = Message::Prepare(self.proposal_number, self.round_number, value);
+        let message = Message::Prepare(self.proposal_number, self.id, self.round_number, value);
         for acceptor in tx.lock().unwrap().iter() {
             println!("[Proposer] Sending message: {:?}", message);
             acceptor.send(message.clone()).unwrap();
@@ -31,7 +31,7 @@ impl Proposer {
 
     pub fn handle_stable_consensus(&mut self, tx: &Arc<Mutex<Vec<Sender<Message>>>>, id: Option<u64>, value: String) {
         let proposal_number = self.proposal_number + 1 + id.unwrap_or(0);
-        let message = Message::Propose(proposal_number, self.round_number, value);
+        let message = Message::Propose(proposal_number, self.id, self.round_number, value);
         for acceptor in tx.lock().unwrap().iter() {
             println!("[Proposer] Sending message: {:?}", message);
             acceptor.send(message.clone()).unwrap();
@@ -56,7 +56,7 @@ impl Proposer {
         value: String,
         tx: & Arc<Mutex<Vec<Sender<Message>>>>,
     ) {
-        let message = Message::Propose(proposal_number, round_number, value);
+        let message = Message::Propose(proposal_number, self.id, round_number, value);
         for acceptor in tx.lock().unwrap().iter() {
             println!("[Proposer] Sending message: {:?}", message);
             acceptor.send(message.clone()).unwrap();

@@ -15,9 +15,10 @@ use proposer::Proposer;
 use acceptor::Acceptor;
 use formatting::{print_green, print_red};
 
-const NUM_PROPOSERS: usize = 1;
+const NUM_PROPOSERS: usize = 2;
 const NUM_ACCEPTORS: usize = 3;
 const NUM_LEARNERS: usize = 1;
+const NUM_CLIENTS: usize = 1;
 
 fn setup_channels(nodes: usize) -> (Arc<Mutex<Vec<Sender<Message>>>>, Arc<Mutex<Vec<Receiver<Message>>>>) {
 
@@ -32,19 +33,20 @@ fn setup_channels(nodes: usize) -> (Arc<Mutex<Vec<Sender<Message>>>>, Arc<Mutex<
 }
 
 
-fn setup_learners(learners: &mut Vec<thread::JoinHandle<()>>, learner_rxs: Arc<Mutex<Vec<Receiver<Message>>>>, proposer_txs: Vec<Sender<Message>>, storage: &mut Arc<Mutex<Vec<(u64, String)>>>) {
+fn setup_learners(learners: &mut Vec<thread::JoinHandle<()>>, learner_rxs: Arc<Mutex<Vec<Receiver<Message>>>>, proposer_txs: Vec<Sender<Message>>, client_txs: Arc<Mutex<Vec<Sender<Message>>>>, storage: &mut Arc<Mutex<Vec<(u64, String)>>>) {
     for i in 0..NUM_LEARNERS {
         let learner_rx_binding = learner_rxs.lock().unwrap()[i].clone();
         let proposer_txs_binding = proposer_txs.clone();
         let mut storage_binding = storage.clone();
+        let client_tx_binding = client_txs.lock().unwrap()[0].clone();
         let handle = thread::spawn(move || {
             let learner = Learner::new(i as u64);
             loop {
                 println!("[Learner] Waiting for message");
                 let message = learner_rx_binding.recv().unwrap();
                 match message {
-                    Message::Accept(proposal_number, round_number, value) => {
-                        learner.record(proposal_number, round_number, value.clone(), &mut storage_binding, &proposer_txs_binding);
+                    Message::Accept(proposal_number, leader_id, round_number, value) => {
+                        learner.record(proposal_number, round_number, value.clone(), &mut storage_binding, &proposer_txs_binding, &client_tx_binding, leader_id);
                     }
                     Message::Terminate => {
                         println!("[Learner] Received TERMINATE");
@@ -82,7 +84,7 @@ learner_txs: Arc<Mutex<Vec<Sender<Message>>>>) {
                     Message::StableConsensus(id, value) => {
                         proposer.handle_stable_consensus(&acceptor_txs_binding, Some(id), value);
                     }
-                    Message::Promise(proposal_number, round_number, accepted_proposal_number, value) => {
+                    Message::Promise(proposal_number, leader_id, round_number, accepted_proposal_number, value) => {
                         proposals.push((proposal_number, accepted_proposal_number, value));
                         if proposals.len() >= (NUM_ACCEPTORS / 2) + 1 {
                             println!("[Proposer] Achieved quorum");
@@ -97,12 +99,12 @@ learner_txs: Arc<Mutex<Vec<Sender<Message>>>>) {
                             } else {
                                 propose_value = proposals[0].2.clone();
                             }
-                            proposer.propose(proposal_number, round_number,     propose_value, &acceptor_txs_binding);
+                            proposer.propose(proposal_number, round_number, propose_value, &acceptor_txs_binding);
                             proposals.clear();
                             
                         } 
                     }
-                    Message::Accept(proposal_number, round_number, value) => {
+                    Message::Accept(proposal_number, leader_id, round_number, value) => {
                         println!("[Proposer] Received ACCEPT: {:?}", value);
                         accepted_values.push(value.clone());
                         // Count occurrences of each value in accepted_values
@@ -122,7 +124,7 @@ learner_txs: Arc<Mutex<Vec<Sender<Message>>>>) {
                             accepted_values.clear();
                             for learner_tx in learner_txs_binding.lock().unwrap().iter() {
                                 learner_tx
-                                    .send(Message::Accept(proposal_number, round_number, max_value.clone()))
+                                    .send(Message::Accept(proposal_number, leader_id, round_number, max_value.clone()))
                                     .unwrap();
                             }
                             proposals.clear();
@@ -164,11 +166,11 @@ proposer_txs: Vec<Sender<Message>>) {
             loop {
                 let message = rx_binding.recv().unwrap();
                 match message {
-                    Message::Prepare(proposal_number, round_number, value) => {
-                        acceptor.handle_prepare(proposal_number, round_number, value, &proposer_tx_binding);
+                    Message::Prepare(proposal_number, leader_id, round_number, value) => {
+                        acceptor.handle_prepare(proposal_number, leader_id, round_number, value, &proposer_tx_binding);
                     }
-                    Message::Propose(proposal_number, round_number, value) => {
-                        acceptor.handle_propose(proposal_number, round_number, value, &proposer_tx_binding);
+                    Message::Propose(proposal_number, leader_id, round_number, value) => {
+                        acceptor.handle_propose(proposal_number, leader_id, round_number, value, &proposer_tx_binding);
                     }
                     Message::Reset => {
                         println!("[Acceptor] Received RESET");
@@ -195,7 +197,7 @@ proposer_txs: Vec<Sender<Message>>) {
 
 fn main() {
   
-    let client = Client::new(0);
+    let mut client = Client::new(0);
     let mut storage = Arc::new(Mutex::new(vec![]));
     // Nodes
     let mut proposers    = vec![];
@@ -206,6 +208,7 @@ fn main() {
     let mut proposer_txs = vec![]; // Store multiple tx channels
     let (learner_txs, learner_rxs) = setup_channels(NUM_LEARNERS);
     let (acceptor_txs, acceptor_rxs) = setup_channels(NUM_ACCEPTORS);
+    let (client_txs, client_rxs) = setup_channels(NUM_CLIENTS);
     // PROPOSERS
     setup_proposers(&mut proposers, &mut proposer_txs, acceptor_txs.clone(), learner_txs.clone());
 
@@ -213,9 +216,10 @@ fn main() {
     setup_acceptors(&mut acceptors, acceptor_rxs.clone(), acceptor_txs.clone(), proposer_txs.clone());
     
     // LEARNERS
-    setup_learners(&mut learners, learner_rxs.clone(), proposer_txs.clone(), &mut storage);
+    setup_learners(&mut learners, learner_rxs.clone(), proposer_txs.clone(), client_txs.clone(), &mut storage);
 
     client.consensus(None, "values".to_string(), proposer_txs[0].clone());
+    client.await_stable_leader(client_rxs.lock().unwrap()[0].clone());
     thread::sleep(Duration::from_secs(1));
     client.send_to_stable_leader(None, "wabbit".to_string(), proposer_txs[0].clone());
     client.send_to_stable_leader(None, "wabb2it".to_string(), proposer_txs[0].clone());
@@ -274,6 +278,7 @@ mod tests {
         let mut proposer_txs = vec![]; // Store multiple tx channels
         let (learner_txs, learner_rxs) = setup_channels(NUM_LEARNERS);
         let (acceptor_txs, acceptor_rxs) = setup_channels(NUM_ACCEPTORS);
+        let (client_txs, client_rxs) = setup_channels(NUM_CLIENTS);
         // PROPOSERS
         setup_proposers(&mut proposers, &mut proposer_txs, acceptor_txs.clone(), learner_txs.clone());
 
@@ -281,7 +286,7 @@ mod tests {
         setup_acceptors(&mut acceptors, acceptor_rxs.clone(), acceptor_txs.clone(), proposer_txs.clone());
         
         // LEARNERS
-        setup_learners(&mut learners, learner_rxs.clone(), &mut storage.clone());
+        setup_learners(&mut learners, learner_rxs.clone(), proposer_txs.clone(), client_txs.clone(), &mut storage);
 
         client.consensus(None, "values".to_string(), proposer_txs[0].clone());
         thread::sleep(Duration::from_secs(2));
