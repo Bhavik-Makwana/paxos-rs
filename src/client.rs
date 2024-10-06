@@ -1,7 +1,7 @@
 use crossbeam_channel::{bounded, Receiver, Sender};
 use crate::message::Message;
 use crate::formatting::{print_green, print_red};
-
+use std::sync::{Arc, Mutex};
 pub struct Client {
     id: u64,
     leader_id: Option<u64>,
@@ -24,8 +24,8 @@ impl Client {
         tx.send(message.clone()).unwrap_or(println!("Failed to send message {:?}", message.clone()));
     }
 
-    pub fn await_stable_leader(&mut self, rx: Receiver<Message>) {
-        let message = rx.recv().unwrap();
+    pub fn await_stable_leader(&mut self, rxs: Arc<Mutex<Vec<Receiver<Message>>>>) {
+        let message = rxs.lock().unwrap()[self.id as usize].recv().unwrap();
         match message {
             Message::LeaderID(id) => {
                 print_green(&format!("[Client] LEADER ID: {:?}", id));

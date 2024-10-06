@@ -18,7 +18,7 @@ use formatting::{print_green, print_red};
 const NUM_PROPOSERS: usize = 2;
 const NUM_ACCEPTORS: usize = 3;
 const NUM_LEARNERS: usize = 1;
-const NUM_CLIENTS: usize = 1;
+const NUM_CLIENTS: usize = 2;
 
 fn setup_channels(nodes: usize) -> (Arc<Mutex<Vec<Sender<Message>>>>, Arc<Mutex<Vec<Receiver<Message>>>>) {
 
@@ -38,7 +38,7 @@ fn setup_learners(learners: &mut Vec<thread::JoinHandle<()>>, learner_rxs: Arc<M
         let learner_rx_binding = learner_rxs.lock().unwrap()[i].clone();
         let proposer_txs_binding = proposer_txs.clone();
         let mut storage_binding = storage.clone();
-        let client_tx_binding = client_txs.lock().unwrap()[0].clone();
+        let client_tx_binding = client_txs.clone();
         let handle = thread::spawn(move || {
             let learner = Learner::new(i as u64);
             loop {
@@ -198,6 +198,8 @@ proposer_txs: Vec<Sender<Message>>) {
 fn main() {
   
     let mut client = Client::new(0);
+    let mut client2 = Client::new(1);
+    // let clients = vec![client, client2];
     let mut storage = Arc::new(Mutex::new(vec![]));
     // Nodes
     let mut proposers    = vec![];
@@ -219,12 +221,13 @@ fn main() {
     setup_learners(&mut learners, learner_rxs.clone(), proposer_txs.clone(), client_txs.clone(), &mut storage);
 
     client.consensus(None, "values".to_string(), proposer_txs[0].clone());
-    client.await_stable_leader(client_rxs.lock().unwrap()[0].clone());
+    client.await_stable_leader(client_rxs.clone());
+    client2.await_stable_leader(client_rxs.clone());
     thread::sleep(Duration::from_secs(1));
     client.send_to_stable_leader(None, "wabbit".to_string(), proposer_txs[0].clone());
     client.send_to_stable_leader(None, "wabb2it".to_string(), proposer_txs[0].clone());
     client.send_to_stable_leader(None, "wabitual".to_string(), proposer_txs[0].clone());
-    client.send_to_stable_leader(Some(10), "wabitual".to_string(), proposer_txs[0].clone());
+    client2.send_to_stable_leader(Some(10), "wabitual".to_string(), proposer_txs[0].clone());
     thread::sleep(Duration::from_secs(1));
     // client.consensus(Some(10), "wabbit".to_string(), proposer_txs[0].clone());
     client.send_to_stable_leader(Some(10), "∑avingwabbit".to_string(), proposer_txs[0].clone());
