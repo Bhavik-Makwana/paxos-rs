@@ -79,6 +79,9 @@ learner_txs: Arc<Mutex<Vec<Sender<Message>>>>) {
                     Message::Consensus(id, value) => {
                         proposer.handle_consensus(&acceptor_txs_binding, Some(id), value);
                     }
+                    Message::StableConsensus(id, value) => {
+                        proposer.handle_stable_consensus(&acceptor_txs_binding, Some(id), value);
+                    }
                     Message::Promise(proposal_number, round_number, accepted_proposal_number, value) => {
                         proposals.push((proposal_number, accepted_proposal_number, value));
                         if proposals.len() >= (NUM_ACCEPTORS / 2) + 1 {
@@ -214,13 +217,13 @@ fn main() {
 
     client.consensus(None, "values".to_string(), proposer_txs[0].clone());
     thread::sleep(Duration::from_secs(1));
-    client.consensus(None, "wabbit".to_string(), proposer_txs[0].clone());
-    client.consensus(None, "wabb2it".to_string(), proposer_txs[0].clone());
-    client.consensus(None, "wabitual".to_string(), proposer_txs[0].clone());
-    client.consensus(Some(10), "wabitual".to_string(), proposer_txs[0].clone());
+    client.send_to_stable_leader(None, "wabbit".to_string(), proposer_txs[0].clone());
+    client.send_to_stable_leader(None, "wabb2it".to_string(), proposer_txs[0].clone());
+    client.send_to_stable_leader(None, "wabitual".to_string(), proposer_txs[0].clone());
+    client.send_to_stable_leader(Some(10), "wabitual".to_string(), proposer_txs[0].clone());
     thread::sleep(Duration::from_secs(1));
     // client.consensus(Some(10), "wabbit".to_string(), proposer_txs[0].clone());
-    client.consensus(Some(10), "∑avingwabbit".to_string(), proposer_txs[0].clone());
+    client.send_to_stable_leader(Some(10), "∑avingwabbit".to_string(), proposer_txs[0].clone());
     thread::sleep(Duration::from_secs(3));
     
     terminate_threads(proposer_txs, acceptor_txs, learner_txs);

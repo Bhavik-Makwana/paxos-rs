@@ -16,4 +16,10 @@ impl Client {
         print_green(&format!("[Client] CONSENSUS: {:?}", message));
         tx.send(message.clone()).unwrap_or(println!("Failed to send message {:?}", message.clone()));
     }
+
+    pub fn send_to_stable_leader(&self, id: Option<u64>, value: String, tx: Sender<Message>) {
+        let message = Message::StableConsensus(id.unwrap_or(0), value);
+        print_green(&format!("[Client] CONSENSUS: {:?}", message));
+        tx.send(message.clone()).unwrap_or(println!("Failed to send message {:?}", message.clone()));
+    }
 }
