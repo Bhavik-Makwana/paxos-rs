@@ -2,6 +2,8 @@ use crossbeam_channel::{bounded, Receiver, Sender};
 use crate::message::Message;
 use crate::formatting::{print_green, print_red};
 use std::sync::{Arc, Mutex};
+
+#[derive(Debug, Clone)]
 pub struct Client {
     id: u64,
     leader_id: Option<u64>,
