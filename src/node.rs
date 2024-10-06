@@ -132,6 +132,10 @@ impl Node {
         print_red(&format!("[Learner] Recording value: {:?} with proposal number: {:?} and round number: {:?}", value, proposal_number, round_number));
         let mut storage_guard: std::sync::MutexGuard<'_, Vec<(u64, String)>> = storage.lock().unwrap();
         if !storage_guard.contains(&(round_number, value.clone())) {
+            if storage_guard.iter().any(|(stored_round, _)| *stored_round >= round_number) {
+                print_red(&format!("[Learner] Skipping record: round number {} is not greater than all stored round numbers", round_number));
+                return;
+            }
             storage_guard.push((round_number, value.clone()));
             self.update_round_number_learner(round_number, &txs);
             self.send_stable_leader(client_txs, leader_id);
